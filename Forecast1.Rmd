@@ -1,0 +1,902 @@
+---
+title: "Forecasting Assignment 1"
+author: "Priya Ningappa Madabal (s3959738)"
+date: "2023-08-25"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## **Data Description**
+
+* The dataset to be analyzed for this assignment consists of monthly averages for the ASX All Ordinaries (Ords) Price Index, Gold price (AUD),  Crude Oil (Brent, USD/bbl) and Copper (USD/tonne) starting from January 2004.
+
+* The analysis aims to explore and elaborate on:
+
+The existence of nonstationarity in dataset,
+The impact of the components of a time series data on the given dataset
+The most accurate and suitable distributed lag model for the ASX price index.
+
+```{r}
+# Load the necessary packages required to reproduce the report.
+
+library(TSA)
+library(urca)
+library(tseries)
+library(x12)
+library(dLagM)
+library(forecast)
+library(expsmooth)
+library(dynlm)
+library(x12)
+library(Hmisc)
+library(AER)
+
+```
+
+## **Read/Import Data**
+
+* In the below code, we have impotred the given ASX_data.csv file using 'read.csv()' function. 
+
+* The series has loaded as a data.frame object which needs to be converted to the ts object.
+
+* We have 4 variables: "ASX price", "Gold price", "Crude Oil (Brent)_USD/bbl", and "Copper_USD/tonne" and 161 observations in the dataset. 
+
+```{r}
+
+# Importing the data
+
+getwd()
+
+setwd("/Users/priya/Desktop/Semester 2/Forecasting/Assignment 1")
+
+ASX_data <- read.csv('ASX_data.csv')
+
+class(ASX_data)
+
+head(ASX_data)
+
+```
+
+**Converting character variables to numeric** 
+We can observe that Gold price and Copper are character variables. Hence converted them to numeric for analysis. 
+
+```{r}
+
+# Convert character variables to numeric
+
+ASX_data$Gold.price <- as.numeric(gsub(",", "", ASX_data$Gold.price))
+ASX_data$Copper_USD.tonne <- as.double(gsub(",", "", ASX_data$Copper_USD.tonne))
+
+```
+
+## **Convert data into a time series object**
+
+* We use the function ts() to convert other objects to time series objects. Hence, in the below chunk of code the objects have been converted to ts object. Using the ts() function in R, the ASX price column was converted into a time series object. This conversion facilitated the analysis of the data in a time-based context.
+
+* Starting year is 2004. 
+
+* We can observe from the output that the column format is changed to a matrix format in years x months. 
+
+```{r}
+
+# Convert data into a time series object
+
+asx.ts = ts(ASX_data$`ASX.price`, start = c(2004, 1), frequency = 12)
+
+gold.ts = ts(ASX_data$`Gold.price`, start = c(2004, 1), frequency = 12)
+
+oil.ts = ts(ASX_data$`Crude.Oil..Brent._USD.bbl`, start = c(2004, 1), frequency = 12)
+
+copper.ts = ts(ASX_data$`Copper_USD.tonne`, start = c(2004, 1), frequency = 12)
+
+```
+
+
+## **Descriptive Statistics** 
+
+* We have performed descriptive statistics on the dataset using summary() function. We can note down the minimum, maximum, mean, median, etc. values from the output.  
+
+
+```{r}
+
+#Descriptive Statistics
+
+summary(ASX_data)
+
+```
+
+## **Visualisation of time series**
+
+* In order to gain a visual understanding of the price movement across the years, we generated a time series plot. The plot visually represents the variations in the ASX price index over the years.
+
+* In the plot, the y-axis represents the Price, and the x-axis represents the years. The title of the plot is "Price across years".
+
+* The resulting plot provides a clear visualization of how the price has fluctuated over the years. The line plot depicts the overall trend and movement of the price index. Additionally, individual points were added to the plot to emphasize the seasonal variations within each year. These points are aligned with the respective seasons, contributing to a more comprehensive view of the data.
+
+* By examining the plot, patterns, trends, and potential anomalies within the ASX price index can be easily identified. This visual representation serves as a valuable initial exploration of the dataset's characteristics and informs further analysis and modeling.
+
+* Upon examining the plot, a distinct pattern emerges: 
+  -> All Ordinaries price index series has an upward trend over year 2004 to 2017. The Gold price series has a general upward      trend over year 2004 to 2017. The Crude Oil price series over the year 2004 to 2017 has no obvious trend. The Copper          price series over the year 2004 to 2017 has a general trend. 
+  -> There are no seasonality present in the series.
+  -> There are no changing variance present in the series.
+  -> It is clear that there are successive fluctuations around the mean level which indicates an autoregressive and moving        average behaviour.
+  -> There are potential intervention points around 2006 and 2008 for ASX. There are no obvious intervention points seen for       Gold. There is an intervention point around 2008 for Crude and Copper. 
+
+```{r}
+
+#Visualisation of time series.
+
+par(mfrow=c(2,2))
+
+# ASX Price
+plot(asx.ts, ylab='Price', xlab = 'Year', type='o', main = "ASX Price Series")
+
+# Gold
+plot(gold.ts, ylab='Price (AUD)', xlab = 'Year', type='o', main = "Gold Price Series")
+
+# Crude Oil
+plot(oil.ts, ylab='Price (USD/bbl)', xlab = 'Year', type='o', main = "Crude Oil Price Series")
+
+# Copper
+plot(copper.ts, ylab='Price (USD/tonne)', xlab= 'Year', type='o', main= "Copper Oil Price Series")
+
+```
+## ** Scaled Plot**
+
+* To compare all the data in one plot, we have used scaled plot. 
+
+```{r}
+data.ts = ts(ASX_data[,1:4])
+# scale the data
+data.scaled = scale(data.ts)
+plot(data.scaled, plot.type='s', col=c('blue', 'red', 'green', 'black'), 
+     main='Standardized ASX Series', ylab='Scaled Price', xlab='Time')
+legend('topleft',lty=1,text.width=17, col=c('blue', 'red', 'green', 'black'),
+       c('All Ords', 'Gold', 'Oil', 'Copper'))
+```
+* From the plot, a similar pattern is observed among all the series within the range of 0 to 50. Beyond the 50-time mark, a divergence in the trend of the All Ordinaries (Ords) Price Index becomes apparent, moving in a contrary direction to that of the Crude Oil and Copper Price Series. Notably, both the Copper and Oil Price Series exhibit a consistent pattern, suggesting a potential correlation between these two price series. To explore this correlation further, a scatter plot matrix and correlation matrix has been implemented.
+
+## **Correlation**
+
+```{r}
+
+df_corr <- ASX_data[,1:4]
+
+  
+# rename the columns
+colnames(df_corr) <- c('asxPrice', 'goldPrice', 'crudeOilPrice', 'copperPrice')
+
+df_corr.ts = ts(df_corr[,1:4])
+
+# Correlation panel
+panel.cor <- function(x, y){
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- round(cor(x, y), digits=2)
+    txt <- paste0("R = ", r)
+    cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+# Customize upper panel
+upper.panel<-function(x, y){
+  points(x,y, pch = 19)
+}
+
+# Suppress warnings
+suppressWarnings({
+# function fot panel.cor & upper.pannel
+# can be found in Appendix
+# Create the plot
+pairs(df_corr.ts, 
+      lower.panel = panel.cor,
+      upper.panel = upper.panel)
+})
+```
+
+```{r}
+
+cor(df_corr.ts)
+
+```
+* Based on the scatter plot matrix and the correlation matrix in the above results, it is observed that a moderate positive correlation is found between the ASX Price and Copper Price with r=0.5617864. It is also observed that a strong positive correlation is found between Copper Price and Crude Oil Price.
+
+## **Stationary Test**
+
+## **ACF and PACF plots next to each other**
+
+* To gain insights into the underlying structure of the series, we conducted an analysis of the autocorrelation function (ACF) and the partial autocorrelation function (PACF). These functions provide valuable information about the correlation between observations at different time lags.
+
+* The ACF plot illustrates the correlation between the price values at various lag intervals. It helps identify potential lag orders for the autoregressive (AR) component in the time series model.
+
+
+```{r}
+
+# ASX Price 
+
+par(mfrow=c(1,2))
+
+acf(asx.ts, main="ACF of ASX Price Index")
+
+pacf(asx.ts, main="PACF of ASX Price Index")
+
+
+```
+
+
+```{r}
+
+# Gold 
+
+par(mfrow=c(1,2))
+acf(gold.ts, main="ACF of Gold Price ")
+pacf(gold.ts, main="PACF of Gold Price ")
+
+
+```
+
+```{r}
+#Crude Oil
+par(mfrow=c(1,2))
+acf(gold.ts, main="ACF of Crude Oil Price ")
+pacf(gold.ts, main="PACF of Crude Oil Price")
+
+```
+```{r}
+#Copper
+par(mfrow=c(1,2))
+acf(copper.ts, main="ACF of Copper Price ")
+pacf(copper.ts, main="PACF of Copper Price ")
+
+```
+
+* Because we have a decreasing pattern in ACF and PACF, we infer that there is a trend in the series which dominates the series correlation properties of the series.
+
+## **Nonstationarity in the Dataset**
+
+* To further explore the stationarity characteristics of the price series, the ADF test is used on a time series. The result of the ADF test includes a test statistic and a p-value. 
+
+* Assumptions:
+  H0: The series is non-stationary
+  HA: The series is stationary
+
+
+```{r}
+# ASX Price
+
+asx.k = ar(asx.ts)$order
+adf.test(asx.ts, k=asx.k)
+
+```
+
+* Since the p-value=0.392 which is greater than 0.05, we cannot reject the null hypothesis, indicating that the ASX Price Index series is non-stationary at the 5% significance level. This implies that the series demonstrates temporal patterns and lacks a consistent variance throughout its duration.
+
+```{r}
+# Gold Price
+
+gold.k = ar(gold.ts)$order
+adf.test(gold.ts, k = gold.k)
+
+```
+* The Dickey-Fuller statistic is -2.2824, and the associated p-value is 0.4585. Since the p-value is greater than the common significance level of 0.05, we do not have enough evidence to reject the null hypothesis. This suggests that the Gold Price series likely contains a unit root and is nonstationary. In simpler terms, the series displays time-dependent patterns and does not possess constant variance over time.
+
+```{r}
+
+#Crude Oil
+oil.k = ar(oil.ts)$order
+adf.test(oil.ts, k = oil.k)
+
+```
+* The Dickey-Fuller statistic yielded a value of -2.0703, and the corresponding p-value is 0.547. As the p-value is considerably higher than the common significance level of 0.05, there is no substantial evidence to reject the null hypothesis. This suggests that the Crude Oil Price series is likely to possess a unit root, signifying nonstationarity. In simpler terms, the series displays time-dependent patterns and does not exhibit consistent variance over time.
+
+```{r}
+
+#Copper
+copper.k = ar(copper.ts)$order
+adf.test(copper.ts, k = copper.k)
+
+```
+* The Dickey-Fuller statistic is -2.3847, and the associated p-value is 0.4159. As the p-value exceeds the common significance level of 0.05, there is insufficient evidence to reject the null hypothesis. This suggests that the Copper Price series is likely nonstationary, indicating the presence of time-dependent patterns and variability that is not constant over time.
+
+## **Composition of Time Series**
+
+* The provided code calculates the optimal lambda values for the Box-Cox transformation applied to each of the four time series: ASX Price, Gold Price, Crude Oil Price, and Copper Price. The results are presented in a table as follows:
+
+```{r}
+#Lambda values
+lambda.asx = BoxCox.lambda(asx.ts) 
+lambda.gold = BoxCox.lambda(gold.ts) 
+lambda.oil = BoxCox.lambda(oil.ts) 
+lambda.copper = BoxCox.lambda(copper.ts)
+cbind(lambda.asx, lambda.gold, lambda.oil, lambda.copper)
+
+```
+
+* Based on the lambda values obtained from the Box-Cox transformation, it can be concluded that only the ASX price and Crude Oil price series need to be transformed. The lambda value of approximately 2 for the ASX price series suggests a transformation to the 2nd order (quadratic), and the negative lambda value of -0.8304 for the Crude Oil price series indicates a transformation involving a negative order.
+
+On the other hand, the lambda values very close to 1 for the Gold and Copper price series indicate that these series do not require any transformation, as the value of 1 corresponds to a logarithmic transformation, which does not significantly change the original data.
+
+## **Transformation**
+
+## **Box-Cox transformation**
+
+*In an effort to mitigate the nonstationarity observed in the price series, a Box-Cox transformation was applied. The Box-Cox transformation is a powerful technique that aims to stabilize variance and achieve a more normal distribution in the data. 
+
+* The resulting plot illustrates the transformed price series with the x-axis representing years and the y-axis representing the price. The data points are connected by lines to depict the sequence of changes. 
+
+* The Box-Cox transformation holds the potential to stabilize the variance and achieve a more stationary distribution in the transformed series.
+
+```{r}
+#ASX Price 
+
+asx.ts.BC = ((asx.ts^(lambda.asx))-1)/lambda.asx
+plot(asx.ts.BC, ylab='Price', xlab = 'Year', type='o', main = "Box-Cox Transformed ASX Price Series")
+
+```
+```{r}
+#Crude oil
+
+oil.ts.BC = ((oil.ts^(lambda.oil))-1)/lambda.oil
+plot(oil.ts.BC, ylab='Price', xlab = 'Year', type='o', main = "Box-Cox Transformed Oil Price Series")
+
+```
+* Based on the visualization provided, it can be seen that even after applying the Box-Cox transformations to both series, they still exhibit nonstationary behavior. Therefore, we apply differencing step to achieve stationarity.
+
+## **Differencing**
+
+First order differencing is applied for the transformed series (i.e. ASX and Crude Oil Price series) and the untransformed series (i.e. Gold and Copper Price series).
+
+```{r}
+
+# First order differencing
+asx.ts.BC.D1 <- diff(asx.ts.BC, differences = 1)
+oil.ts.BC.D1 <- diff(oil.ts.BC, differences = 1)
+gold.ts.D1 <- diff(gold.ts, differences = 1)
+copper.ts.D1 <- diff(copper.ts, differences = 1)
+
+par(mfrow=c(2,2))
+
+# ASX Price Box-Cox and Differencing
+plot(asx.ts.BC.D1, ylab='Price', xlab = 'Year', type='o', main = "ASX Price 1st Order Diff")
+
+# Gold
+plot(gold.ts.D1, ylab='Price (AUD)', xlab = 'Year', type='o', main = "Gold Price 1st Order Diff")
+
+# Crude Oil Box-Cox and Differencing
+plot(oil.ts.BC.D1, ylab='Price (USD/bbl)', xlab = 'Year', type='o', main = "Crude Oil Price 1st Order Diff")
+
+# Copper
+plot(copper.ts.D1, ylab='Price (USD/tonne)', xlab = 'Year', type='o', main = "Copper Price 1st Order Diff")
+
+```
+* From the above plots, the series are now stationary. 
+
+
+## **ADF Test on Transformed Data**
+
+* ADF test is done to validate the results from above. 
+
+
+```{r}
+# ADF test for ASX price
+adf.test(asx.ts.BC.D1) 
+
+```
+
+```{r}
+
+# ADF test for Gold price
+adf.test(gold.ts.D1) 
+
+```
+
+
+```{r}
+# ADF test for Oil price
+adf.test(oil.ts.BC.D1) 
+
+```
+
+```{r}
+# ADF test for Copper price
+adf.test(copper.ts.D1) 
+
+```
+
+* Given that the p-value is below 0.05, indicating statistical significance, there is substantial evidence to reject the null hypothesis. At the 5% significance level, all four series exhibit stationarity.
+
+## **Decomposition**
+
+To understand the effect of trend and seasonality of the series, a decomposition can be done on each of the price series using x12 and stl decompositions. There are two types of composition of a time series which are:
+
+Additive Model:
+y(t)=Level+Trend+Seasonality+Remainder
+
+Multiplicative Model:
+y(t)=Level x Trend x Seasonality x Remainder
+
+```{r}
+# ASX Price 
+par(mfrow=c(1,1))
+stl_all <- stl(asx.ts, t.window=15, s.window="periodic", robust=TRUE)
+plot(stl_all, main = "STL Decomposition of All Ordinaries Price Index")
+
+```
+
+
+
+```{r}
+asx.x12 = x12(asx.ts)
+plot(asx.x12 , sa=TRUE , trend=TRUE, main="X12 decomposition of All ords price index series", forecast=T)
+
+```
+* The ASX Price series exhibited nonstationarity initially, but after suitable transformations and differencing, it was successfully made stationary. The decomposition analyses suggested that the fluctuations in the series were largely due to noise, with little evidence of significant seasonality. This thorough analysis provides valuable insights into the behavior of the ASX Price series and contributes to informed decision-making in financial forecasting.
+
+
+## **Gold**
+```{r}
+
+stl_gold = stl(gold.ts, t.window = 15, s.window = "periodic", robust = TRUE)
+plot(stl_gold, main = "STL decomposition of Gold Price")
+```
+
+
+
+```{r}
+
+gold.x12 = x12(gold.ts)
+plot(gold.x12 , sa=TRUE , trend=TRUE, main="X12 decomposition of Gold Price", forecast=T)
+```
+
+* The Gold Price series analysis indicated the presence of external factors affecting the series behavior, particularly around intervention points. Despite the absence of significant seasonality, the series exhibited distinct trends and noise patterns. The decomposition techniques provided valuable insights into these dynamics, contributing to a better understanding of the Gold Price series' behavior and potential influencing factors.
+
+
+## **Crude oil**
+
+```{r}
+stl_oil = stl(oil.ts, t.window = 15, s.window = "periodic", robust = TRUE)
+plot(stl_oil, main = "STL decomposition of Oil Price")
+
+```
+
+```{r}
+oil.x12 = x12(oil.ts)
+plot(oil.x12 , sa=TRUE , trend=TRUE, main="X12 decomposition of Crude Oil Price", forecast=T)
+
+```
+* Analysis of the Crude Oil Price series revealed the presence of external factors that impact the series around intervention points. Despite the lack of pronounced seasonality, the series exhibited distinct trends and noise patterns. Utilizing decomposition techniques, we gained valuable insights into these dynamics, contributing to a more comprehensive understanding of the Crude Oil Price series and its potential driving factors.
+
+##**Copper**
+
+```{r}
+stl_copper = stl(copper.ts, t.window = 15, s.window = "periodic", robust = TRUE)
+plot(stl_copper, main = "STL decomposition of Copper Price")
+
+```
+
+
+```{r}
+copper.x12 = x12(copper.ts)
+plot(copper.x12 , sa=TRUE , trend=TRUE, main="X12 decomposition of Copper Price", forecast=T)
+
+```
+Analysis of the Copper Price series revealed the presence of external factors that influenced the series, particularly around intervention points. Despite the lack of prominent seasonality, the series exhibited distinct trends and noise patterns. Utilizing decomposition methods, we gained valuable insights into these dynamics, contributing to a deeper understanding of the Copper Price series and the potential factors driving its behavior.
+
+##**Model Building and Diagnostics**
+
+In the subsequent stages of our analysis, we focus on model building and diagnostics to uncover relationships and patterns within the dataset, identify significant predictors, and develop models that can accurately represent the underlying dynamics of the series.
+
+## **Finite DLM**
+
+* In order to construct a predictive model, we start by utilizing a Finite Distributed Lag Model (DLM). This approach allows us to account for lagged effects and deal with multicollinearity among predictors. For this purpose, we consider the All Ordinaries (Ords) Price Index as the dependent series and evaluate the potential predictors (Gold Price, Crude Oil Price, and Copper Price).
+
+* To determine the optimal lag length, we employ the finiteDLMauto() function. This function helps us identify the most suitable lag length by evaluating different lag options (ranging from 1 to 10) based on their AIC and BIC scores. The lag length that results in the lowest AIC and BIC values is selected as the most appropriate choice for the model.
+
+* We assess the performance of different lag configurations using several evaluation metrics, including Mean Absolute Scaled Error (MASE), AIC, BIC, GMRAE, MBRAE, R-squared (Adjusted), and Ljung-Box statistic. These metrics provide insights into the model's accuracy, explanatory power, goodness-of-fit, and the presence of residual autocorrelation.
+
+* Through this process, we aim to construct a Finite DLM that can capture the relationships between the All Ordinaries (Ords) Price Index and its potential predictors while mitigating multicollinearity and incorporating lagged effects. This model will aid in predicting and understanding the behavior of the dependent series while considering the impact of various predictors.
+
+
+```{r}
+df_model <- ASX_data[,1:4]
+# rename the columns
+colnames(df_model) <- c('asxPrice', 'goldPrice', 'oilPrice', 'copperPrice')
+
+# for AIC
+finiteDLMauto(x=as.vector(df_model$goldPrice), y=as.vector(df_model$asxPrice), q.min=1, q.max=10,
+              model.type = 'dlm', error.type = "AIC", trace=TRUE)
+
+```
+
+
+```{r}
+# For BIC
+finiteDLMauto(x=as.vector(df_model$goldPrice), y=as.vector(df_model$asxPrice), q.min=1, q.max=10,
+              model.type = 'dlm', error.type = "BIC", trace=TRUE)
+
+```
+
+* Based on the evaluation, the optimal lag length is determined. In our case, the results indicate that a lag length of 10 (q=10) leads to the lowest AIC and BIC scores. This suggests that considering up to 10 lagged values for the predictors contributes to an effective and accurate model.
+
+
+```{r}
+# Individual series vs asxPrice series
+goldModel = dlm( x = as.vector(df_model$goldPrice) , y = as.vector(df_model$asxPrice), q = 10)$model
+oilModel = dlm( x = as.vector(df_model$oilPrice) , y = as.vector(df_model$asxPrice), q = 10)$model
+copperModel = dlm( x = as.vector(df_model$copperPrice) , y = as.vector(df_model$asxPrice), q = 10)$model
+
+# summission of gold and copper predictors
+goldCopperModel = dlm(formula = asxPrice ~ goldPrice + copperPrice, data = data.frame(df_model), q = 10)$model
+# summission of all the predictors
+allSeriesModel = dlm(formula = asxPrice ~ goldPrice + oilPrice + copperPrice, data = data.frame(df_model), q = 10)$model
+
+# compare AIC and BIC of all models
+all_AIC = AIC(goldModel, oilModel, copperModel, goldCopperModel, allSeriesModel)
+all_BIC = BIC(goldModel, oilModel, copperModel, goldCopperModel, allSeriesModel)
+
+# helper functions
+# AIC and BIC sorting function by Cameron Doyle
+sort.score <- function(x, score = c("bic", "aic")){
+  if (score == "aic"){
+    x[with(x, order(AIC)),]
+  } else if (score == "bic") {
+    x[with(x, order(BIC)),]
+  } else {
+    warning('score = "x" only accepts valid arguments ("aic","bic")')
+  }
+}
+
+sort.score(all_AIC, 'aic')
+
+```
+
+
+```{r}
+
+sort.score(all_BIC, 'bic')
+
+```
+*In order to proceed with the model implementation, the Copper Price series is chosen as the independent series to be included in the Finite Distributed Lag Model (DLM). The objective is to analyze its impact on the dependent ASX Price series.
+
+* The Finite DLM model is formulated by regressing the ASX Price series against lagged values of the Copper Price series. Specifically, the Copper Price series with lag values ranging from 0 to 10 are utilized as predictors. 
+
+* The model is represented as follows:
+
+```{r}
+
+modelcopperDLM = dlm( x = as.vector(copper.ts) , y = as.vector(asx.ts), q = 10 )$model
+summary(modelcopperDLM)
+```
+
+* Upon fitting the Finite DLM model, a summary of the model results is obtained. The summary provides key insights into the significance of the predictor coefficients, the overall model fit, and the explanatory power of the model.
+
+* In conclusion, based on the results obtained from the Finite DLM model, it can be observed that the lagged Copper Price series is not providing substantial explanatory value for predicting the ASX Price series. The low Adjusted R-squared value highlights the limited capability of the model in explaining the observed variability in the ASX Price series using the chosen lagged Copper Price predictors.
+
+## **Diagnostic Checking**
+
+```{r}
+
+checkresiduals(modelcopperDLM)
+
+```
+
+
+```{r}
+copperVIF = vif(modelcopperDLM)
+copperVIF
+
+```
+
+
+```{r}
+copperVIF > 10
+
+```
+
+
+## **Normality Test**
+
+* The hypotheis for normality is:
+
+   H0: The residuals are normally distributed
+   HA: The residuals are not normally distributed
+   
+```{r}
+
+shapiro.test(modelcopperDLM$residuals)
+
+```
+* An F-test of the overall significance of the model is conducted to determine whether the model is statistically significant. The significance of individual lag weights of the predictors is assessed by comparing their p-values to the significance level.
+
+* Time Series Plot and Histogram: The time series plot of the standardized residuals is examined to identify any patterns or anomalies. The histogram of the standardized residuals is also inspected to assess their distribution.
+
+* Serial Correlation: The Autocorrelation Function (ACF) plot of the residuals is analyzed to identify the presence of serial correlation.
+
+* Breusch-Godfrey Test: This test is conducted to formally test for the existence of serial correlation in the residuals.
+Variance Inflation Factor (VIF): VIF values are computed to detect multicollinearity among the predictor variables.
+
+* Based on the diagnostics, it is evident that the finite DLM of lag 10 is not suitable for the series. The model's residuals exhibit significant departures from normality, serial correlation, and multicollinearity, and the lag weights are not statistically significant. Consequently, the model is unable to accurately capture the underlying patterns in the data, making it an inadequate choice for prediction and inference.
+
+
+## **Polynomial DLM**
+
+* To address the multicollinearity issue identified in the finite DLM, a polynomial DLM is employed. This modeling approach tackles collinearity by introducing a polynomial structure to the lag distribution, thereby providing a more flexible representation of the relationship between predictor and response variables. The polynomial DLM aims to mitigate the negative impact of collinearity and enhance the model's explanatory power.
+
+* In light of the findings from the finite DLM, the Copper price series is chosen as the independent series for the polynomial DLM. This series is then compared with the dependent series (ASX price series) to construct the model. In order to optimize the model's fit and performance, the order of the polynomial is set to 1.
+
+* The key advantage of the polynomial DLM lies in its ability to accommodate complex and nonlinear relationships between variables while addressing the issues of multicollinearity that can affect model stability and interpretability. By allowing for a more flexible representation of the lag distribution, the polynomial DLM aims to capture intricate patterns that could otherwise be masked by multicollinearity.
+
+```{r}
+
+# for AIC
+finiteDLMauto(x=as.vector(df_model$copperPrice), y=as.vector(df_model$asxPrice), q.min=1, q.max=10, k.order = 1,
+              model.type = 'poly', error.type = "AIC", trace=TRUE)
+```
+
+
+```{r}
+# For BIC
+finiteDLMauto(x=as.vector(df_model$copperPrice), y=as.vector(df_model$asxPrice), q.min=1, q.max=10, k.order = 1,
+              model.type = 'poly', error.type = "BIC", trace=TRUE)
+
+```
+* 
+Similar to the process of fitting the finite DLM, the selection of the number of lags for the polynomial DLM is conducted within the range of 1 to 10. In this case, the goal is to identify the configuration of lags that minimizes both the AIC and BIC values, indicating a model that strikes a balance between complexity and goodness of fit. As a result of this selection process, the optimal number of lags is determined to be 10, based on the lowest AIC and BIC values obtained within this range.
+
+```{r}
+copperModelpoly = polyDlm( x = as.vector(df_model$copperPrice) , y = as.vector(df_model$asxPrice), q = 10, k=1)$model
+
+```
+
+
+
+```{r}
+summary(copperModelpoly)
+
+```
+* The summary of the polynomial DLM model indicates that all the lag weights of the predictors are statistically significant at the 5% level. The Adjusted-R2 value of 0.1755 suggests that the model accounts for approximately 18% of the variability observed in the ASX price series. Although this improvement is relatively modest, it represents a slight enhancement compared to the finite DLM model.
+
+## **Diagnostic Checking**
+
+```{r}
+checkresiduals(copperModelpoly)
+
+```
+
+
+```{r}
+copperVIFpoly = vif(copperModelpoly)
+copperVIFpoly
+
+```
+
+
+
+```{r}
+
+copperVIFpoly > 10
+```
+
+## **Normality Test**
+
+* The hypotheis for normality is:
+
+   H0: The residuals are normally distributed
+   HA: The residuals are not normally distributed
+
+```{r}
+shapiro.test(copperModelpoly$residuals)
+
+```
+* The F-test for the overall significance of the polynomial DLM model indicates that the model is statistically significant at the 5% level, as all p-values associated with the lag weights of the predictors are below 0.05.
+
+* However, upon analyzing the time series plot and histogram of standardized residuals, noticeable non-random patterns and unusually high residual values are evident, which deviate from the assumptions of a good model fit. The ACF plot also confirms the presence of significant serial correlation in the residuals. This observation is further supported by the Breusch-Godfrey test, which detects serial correlation of up to order 10 at the 5% significance level.
+
+* Moreover, the Variance Inflation Factor (VIF) values suggest that the multicollinearity issue persists in the polynomial DLM model, as all VIF values remain significantly above 10.
+
+* Additionally, the Shapiro-Wilk normality test yields a p-value of 1.828e-05, indicating statistical significance at the 5% level. Consequently, the null hypothesis is rejected, revealing that the residuals deviate significantly from a normal distribution. This departure from normality is further evident in both the histogram and the Shapiro-Wilk test (p-value < 0.05), underscoring the lack of normality in the residuals.
+
+* In conclusion, similar to the finite DLM, the polynomial DLM model with a lag of 10 is deemed unsuitable for modeling the series.
+
+## **Koyck DLM**
+
+* Given the relatively higher correlation between the copper price series and the ASX price series compared to the other predictors, the copper price series is chosen for the Koyck Model.
+
+* With the diagnostics argument set to TRUE, the model provides three tests:
+  -> An F-test of the first-stage regression for assessing the strength of instruments.
+  -> The Wu-Hausman test to determine the significance of the correlation between an independent variable and the error term,
+     addressing endogeneity.
+  -> The Sargan test to evaluate overidentifying restrictions, applicable when there are more instruments than regressors.
+
+* The Koyck Model is implemented as shown below:
+
+```{r}
+
+modelkoyckcopper = koyckDlm(x = as.vector(copper.ts) , y = as.vector(asx.ts))$model
+summary(modelkoyckcopper, diagnostics = TRUE)
+```
+* Upon analyzing the summary of the model, it is evident that δ2 is statistically significant, whereas δ3 is not significant at the 5% level. The high Adjusted-R2 value of 0.9479 indicates that the model accounts for approximately 95% of the variability in the ASX price series, which is a significant improvement compared to the finite DLM and polynomial DLM models. This suggests that the Koyck Model with the copper price series as the predictor is a much better fit for explaining the behavior of the ASX price series.
+
+##**Diagnostic Checking**
+
+```{r}
+
+checkresiduals(modelkoyckcopper)
+```
+
+
+```{r}
+
+copperkoyckVIF = vif(modelkoyckcopper)
+copperkoyckVIF
+```
+
+
+```{r}
+copperkoyckVIF > 10
+
+```
+
+## **Normality test**
+
+* The hypotheis for normality is:
+
+   H0: The residuals are normally distributed
+   HA: The residuals are not normally distributed
+
+```{r}
+
+normalitycheck <- function(x){
+  qqnorm(x,main="QQ plot of standardised residuals")
+  qqline(x, col = 2)
+  print(shapiro.test(x))
+}
+
+normalitycheck(modelkoyckcopper$residuals)
+
+```
+* The F-test examining the overall significance of the model indicates that the model is statistically significant at a 5% significance level, as the p-value is below 0.05.
+
+* Regarding the Weak Instruments test, the model's first stage of least-squares estimation demonstrates significance at the 5% level. The Wu-Hausman test underscores the presence of a significant correlation between the explanatory variable and the error term at a 5% significance level.
+
+* Upon observing the time series plot and histogram of standardized residuals, it becomes apparent that the errors are distributed randomly. Analyzing the ACF plot, it can be concluded that there are no instances of serial correlation within the residuals.
+
+* The VIF values provide evidence that the estimates of the Koyck DLM coefficients are now below 10, indicating the absence of multicollinearity.
+
+* Furthermore, the Shapiro-Wilk normality test yields a p-value of 0.0002204, signifying statistical significance at a 5% level. Consequently, the null hypothesis is rejected, revealing that the residuals significantly deviate from a normal distribution. Additionally, the histogram of the residuals displays a slight left-skew. Therefore, both the histogram and the Shapiro-Wilk test (with a p-value below 0.05) affirm the lack of normality in the residuals.
+
+## **Autorregressive DLM**
+
+* The loop provided runs through combinations of parameters (p and q) to fit the Autorregressive Distributed Lag Models (ARDL) against the ASX Price series. The purpose is to identify the values of p and q that yield the lowest AIC and BIC values. These parameters are then used for further model comparisons involving other predictors.
+
+* The loop iterates through values of p (ranging from 1 to 5) and q (ranging from 1 to 5). For each combination of p and q, the ARDL model is fitted using the ASX Price series as the dependent variable and the Copper Price series as the independent variable. The loop then prints the values of p and q, along with their corresponding AIC and BIC values.
+
+* The intention behind this loop is to systematically identify the optimal values of p and q for the ARDL model that provide the best fit to the ASX Price series in terms of AIC and BIC. These optimal values can then be used to explore the performance of the ARDL model with other predictors such as gold, crude oil, and combinations of gold and copper.
+
+```{r}
+for (i in 1:5){
+  for(j in 1:5){
+    model4.1 = ardlDlm(x = as.vector(df_model$copperPrice) , y = as.vector(df_model$asxPrice), p = i , q = j )
+    cat("p = ", i, "q = ", j, "AIC = ", AIC(model4.1$model), "BIC = ", BIC(model4.1$model),"\n")
+    }
+  }
+
+```
+
+* Based on the outcomes of the loop, it's evident that the values p = 1 and q = 5 yield the lowest AIC and BIC values. With these parameters identified, the next step involves comparing various combinations of predictors to ascertain whether using multiple predictors can further reduce the AIC and BIC values.
+
+```{r}
+# Individual series vs asxPrice series
+goldModelardl = ardlDlm( x = as.vector(df_model$goldPrice) , y = as.vector(df_model$asxPrice),p = 1 , q = 5)$model
+oilModelardl = ardlDlm( x = as.vector(df_model$oilPrice) , y = as.vector(df_model$asxPrice), p = 1 , q = 5)$model
+copperModelardl = ardlDlm( x = as.vector(df_model$copperPrice) , y = as.vector(df_model$asxPrice), p = 1 , q = 5)$model
+
+# summission of gold and copper predictors
+f1 = asxPrice ~ goldPrice + copperPrice
+goldCopperModelardl = ardlDlm(formula = f1, data = data.frame(df_model), p = 1 , q = 5)$model
+
+# compare AIC and BIC of all models
+ardlDLM_AIC = AIC(goldModelardl, oilModelardl, copperModelardl, goldCopperModelardl)
+ardlDLM_BIC = BIC(goldModelardl, oilModelardl, copperModelardl, goldCopperModelardl)
+
+sort.score(ardlDLM_AIC, 'aic')
+
+```
+
+
+```{r}
+
+sort.score(ardlDLM_BIC, 'bic')
+
+```
+
+* Consequently, it's evident that models with multiple predictors exhibit lower AIC and BIC values. To mitigate collinearity issues, the choice was made to use the copper and gold price series as predictors for the ASX price series in the ardlDlm modeling. Subsequently, a loop is employed to fit autoregressive DLMs across a range of lag lengths and orders of the autoregressive (AR) process for the two selected predictors, namely Gold and Copper Price series.
+
+```{r}
+f1 = asxPrice ~ goldPrice + copperPrice
+for (i in 1:5){
+  for(j in 1:5){
+    model4.1 = ardlDlm(formula = f1, data = data.frame(df_model), p = i , q = j )
+    cat("p = ", i, "q = ", j, "AIC = ", AIC(model4.1$model), "BIC = ", BIC(model4.1$model),"\n")
+    }
+  }
+
+```
+
+* The loop results indicate that the combination of p = 1 and q = 5 yields the lowest AIC and BIC values when two predictors are employed to elucidate the ASX price index.
+
+* Subsequently, the implementation of the Autorregressive Distributed Lag Model involves utilizing the gold and copper price series alongside the aforementioned lag lengths and AR process orders. The model is implemented as demonstrated below: 
+
+```{r}
+f1 = asxPrice ~ goldPrice + copperPrice
+modelARDLM = ardlDlm(formula = f1, data = data.frame(df_model), p = 1 , q = 5 )$model
+summary(modelARDLM)
+
+```
+
+* The summary of the presented model reveals that all the lag coefficients of the predictors are statistically significant at the 5% significance level. The Adjusted-R2 value of 0.9502 indicates that the model effectively accounts for approximately 95% of the variance in the ASX price series. Furthermore, the F-test for the overall significance of the model confirms its statistical significance at the 5% level, as evidenced by the p-value being lower than 0.05.
+
+##**Diagnostic Checking**
+
+```{r}
+
+checkresiduals(modelARDLM)
+
+```
+
+
+```{r}
+
+ardlVIF = vif(copperModelpoly)
+ardlVIF
+
+```
+
+
+```{r}
+
+ardlVIF > 10
+```
+
+##**Normality Test**
+
+* The hypotheis for normality is:
+
+   H0: The residuals are normally distributed
+   HA: The residuals are not normally distributed
+
+```{r}
+
+normalitycheck(modelARDLM$residuals)
+
+```
+* Upon analyzing the time series plot and standardized residuals histogram, it becomes evident that the errors are evenly spread throughout. This observation, coupled with the results of the ACF plot, leads to the conclusion that there is no serial correlation present in the residuals. The calculated AIC and BIC values for the ARDL(1,5) model are reported as AIC = 2086.767 and BIC = 2120.315.
+
+* It's important to note that the VIF values suggest that the estimates of the Autoregressive DLM coefficients are affected by multicollinearity, as all VIF values are significantly greater than 10.
+
+* Further analysis of the standardized residuals' time series plot indicates that the residuals are centered around a mean of zero, aligning with expectations. Histogram and QQ plots further suggest that the residuals follow a standard normal distribution within the range of -3 to 3, thereby lacking influential points. Moreover, the ACF of standardized residuals does not imply the presence of autocorrelation among error terms.
+
+* Regarding the Shapiro-Wilk normality test, the computed p-value of 0.1257 signifies a lack of statistical significance at the 5% level. This implies that there is insufficient evidence to reject the null hypothesis, suggesting that the normality assumption is upheld at the 5% level.
+
+* In summary, considering the issue of multicollinearity, it can be concluded that the ARDL model is not a suitable option for further analysis.
+
+
+## **Conclusion**
+
+* The analysis commenced with an exploration of the raw data of ASX All Ordinaries (Ords) Price Index, Gold price (AUD), Crude Oil (Brent, USD/bbl), and Copper (USD/tonne) from January 2004. Each series was individually visualized to identify trends, seasonality, varying variance, and intervention points. Notably, an intervention around 2008 was noticed in the ASX All Ordinaries (Ords) Price Index, Crude Oil (Brent, USD/bbl), and Copper (USD/tonne) series, likely linked to the financial crisis of that period.
+
+* Subsequently, a scatterplot matrix and correlation matrix were generated. It was revealed that the ASX All Ordinaries (Ords) Price Index had a moderate correlation with the Copper (USD/tonne) series. Stationarity tests followed, encompassing sample ACF and PACF plots, along with Augmented Dickey-Fuller tests for all series. The outcomes indicated non-stationarity and persistent trends in the series due to slowly decaying ACF plots.
+
+* Box-Cox transformations were applied to the ASX and Crude Oil Price series based on lambda values, yet non-stationarity persisted in the transformed data. Therefore, first-order differencing was performed on both the Box-Cox transformed ASX and Crude Oil Price series, along with the Gold and Copper Price series, effectively achieving stationarity.
+
+* Moving forward, time series decomposition was executed to discern the influence of various components on the dataset. Notably, no seasonal effect was detected before decomposition, suggesting external factors impacted the data, particularly the noise component (remainder).
+
+* The subsequent phase involved model building and diagnostics, exploring various lag models including finite DLM, polynomial DLM, Koyck DLM, and autoregressive DLM. After evaluating different candidate models, the Koyck model emerged as the most suitable. This choice yielded a high explanatory capability with an R-squared of 0.9479, and the model diagnostics indicated no significant issues in the residuals. Additionally, the Koyck model displayed immunity to multicollinearity compared to other models.
+
+* In conclusion, although the normality assumption of residuals wasn't met, the Koyck model, among all the models considered, was deemed the most appropriate for further analysis and forecasting.
+
